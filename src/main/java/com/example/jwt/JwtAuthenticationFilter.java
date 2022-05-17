@@ -1,7 +1,6 @@
 package com.example.jwt;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.example.exception.CustomJwtException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.util.StringUtils;
@@ -16,8 +15,9 @@ import java.io.IOException;
 
 public class JwtAuthenticationFilter extends GenericFilterBean {
 
-    private final Logger log = LoggerFactory.getLogger(this.getClass());
     public static final String AUTHORIZATION_HEADER = "Authorization";
+    public static final String BEARER_PREFIX = "Bearer ";
+
     private final JwtProvider jwtProvider;
 
     public JwtAuthenticationFilter(JwtProvider jwtProvider) {
@@ -30,14 +30,15 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 
         HttpServletRequest httpServletRequest = (HttpServletRequest) servletRequest;
         String jwt = resolveToken(httpServletRequest);
-        String requestURI = httpServletRequest.getRequestURI();
 
-        if (StringUtils.hasText(jwt) && jwtProvider.validateAccessToken(jwt)) {
-            Authentication authentication = jwtProvider.getAuthentication(jwt);
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-            log.debug("Security Context에 '{}' 인증 정보를 저장했습니다, uri: {}", authentication.getName(), requestURI);
-        } else {
-            log.debug("유효한 JWT 토큰이 없습니다, uri: {}", requestURI);
+        if (StringUtils.hasText(jwt)) {
+            try {
+                jwtProvider.validateToken(jwt, TokenType.ACCESS_TOKEN);
+                Authentication authentication = jwtProvider.getAuthentication(jwt);
+                SecurityContextHolder.getContext().setAuthentication(authentication);
+            } catch (CustomJwtException e) {
+                httpServletRequest.setAttribute("exception", e.getMessage());
+            }
         }
 
         filterChain.doFilter(servletRequest, servletResponse);
@@ -45,7 +46,7 @@ public class JwtAuthenticationFilter extends GenericFilterBean {
 
     private String resolveToken(HttpServletRequest request) {
         String bearerToken = request.getHeader(AUTHORIZATION_HEADER);
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith(BEARER_PREFIX)) {
             return bearerToken.substring(7);
         }
         return null;
